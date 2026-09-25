@@ -31,6 +31,11 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_hostBuilder__reloadConfigOnChange=false
 ENV DOTNET_USE_POLLING_FILE_WATCHER=1
 
+# El sandbox (gVisor) del plan free de Render no soporta la protección de memoria W^X
+# que .NET activa por defecto desde la 8: sin esto el proceso muere con SIGSEGV (exit 139)
+# nada más arrancar, antes de escribir ningún log.
+ENV DOTNET_EnableWriteXorExecute=0
+
 EXPOSE 8080
 
 # Render inyecta $PORT. exec deja a dotnet como PID 1 para que reciba el SIGTERM del apagado.
