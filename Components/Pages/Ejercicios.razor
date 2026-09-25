@@ -1,0 +1,93 @@
+@page "/ejercicios"
+@attribute [Authorize]
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Ejercicios · Entrenamiento Fuerza</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Ejercicios</h1>
+    <a href="ejercicios/nuevo" class="btn btn-primary">Nuevo ejercicio</a>
+</div>
+
+@if (ejercicios is null)
+{
+    <p>Cargando...</p>
+}
+else if (ejercicios.Count == 0)
+{
+    <p class="text-muted">Todavía no hay ejercicios. Crea el primero.</p>
+}
+else
+{
+    <div class="row g-3">
+        @foreach (var ejercicio in ejercicios)
+        {
+            <div class="col-md-4">
+                <div class="card h-100">
+                    @if (!string.IsNullOrWhiteSpace(ejercicio.VideoUrl))
+                    {
+                        <div class="ratio ratio-16x9">
+                            <iframe src="@EmbedUrl(ejercicio.VideoUrl)" allowfullscreen></iframe>
+                        </div>
+                    }
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h5 class="card-title">@ejercicio.Nombre</h5>
+                            @if (ejercicio.GrupoMuscular is not null)
+                            {
+                                <span class="badge bg-secondary">@ejercicio.GrupoMuscular.Nombre</span>
+                            }
+                        </div>
+                        <p class="card-text text-muted">@ejercicio.Descripcion</p>
+                        <a href="@($"ejercicios/{ejercicio.Id}")" class="btn btn-sm btn-outline-secondary">Editar</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Ejercicio>? ejercicios;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        ejercicios = await db.Ejercicios
+            .Where(e => e.Activo)
+            .Include(e => e.GrupoMuscular)
+            .OrderBy(e => e.Nombre)
+            .ToListAsync();
+    }
+
+    // Convierte un enlace normal de YouTube (watch?v=, youtu.be/, shorts/) en su URL de embed.
+    private static string EmbedUrl(string url)
+    {
+        var id = ExtraerIdYouTube(url);
+        return id is null ? url : $"https://www.youtube.com/embed/{id}";
+    }
+
+    private static string? ExtraerIdYouTube(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return null;
+
+        if (uri.Host.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsolutePath.Trim('/');
+
+        if (uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+        {
+            if (uri.AbsolutePath.StartsWith("/shorts/", StringComparison.OrdinalIgnoreCase))
+                return uri.AbsolutePath["/shorts/".Length..].Trim('/');
+
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            return query.TryGetValue("v", out var v) ? v.ToString() : null;
+        }
+
+        return null;
+    }
+}

@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Nunca subir secretos: la cadena de Supabase va como variable de entorno en Render.
+appsettings.*.local.json
+secrets.json

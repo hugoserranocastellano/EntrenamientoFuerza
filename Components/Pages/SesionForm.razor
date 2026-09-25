@@ -1,0 +1,305 @@
+@page "/diario/nueva"
+@page "/diario/{Id:int}"
+@attribute [Authorize]
+@using System.Security.Claims
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthState
+@rendermode InteractiveServer
+
+<PageTitle>@(Id is null ? "Nueva sesión" : "Sesión") · Entrenamiento Fuerza</PageTitle>
+
+<h1>@(Id is null ? "Nueva sesión" : $"Sesión del {fecha:dd/MM/yyyy}")</h1>
+
+@if (rutinasDisponibles is null)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    @if (mensajeError is not null)
+    {
+        <div class="alert alert-danger">@mensajeError</div>
+    }
+
+    <div class="row col-md-8 mb-3">
+        <div class="col-md-6 mb-2">
+            <label class="form-label">Fecha</label>
+            <input type="date" class="form-control" @bind="fecha" />
+        </div>
+
+        @if (Id is null)
+        {
+            <div class="col-md-6 mb-2">
+                <label class="form-label">Rutina</label>
+                <select class="form-select" @bind="rutinaSeleccionadaId">
+                    <option value="0">-- sesión libre --</option>
+                    @foreach (var r in rutinasDisponibles)
+                    {
+                        <option value="@r.Id">@r.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12">
+                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CargarDesdeRutina">
+                    Cargar ejercicios de la rutina
+                </button>
+            </div>
+        }
+    </div>
+
+    <div class="mb-3 col-md-8">
+        <label class="form-label">Notas</label>
+        <textarea class="form-control" rows="2" @bind="notas"></textarea>
+    </div>
+
+    @foreach (var grupo in gruposEjercicio)
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">@grupo.NombreEjercicio</span>
+                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => gruposEjercicio.Remove(grupo)">Quitar</button>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm align-middle mb-2">
+                    <thead>
+                        <tr>
+                            <th>Serie</th>
+                            <th style="width:120px">Repeticiones</th>
+                            <th style="width:120px">Duración (seg)</th>
+                            <th style="width:110px">Peso (kg)</th>
+                            <th style="width:90px">Hecha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var serie in grupo.Series)
+                        {
+                            <tr>
+                                <td>@serie.NumeroSerie</td>
+                                <td><input type="number" min="0" class="form-control form-control-sm" @bind="serie.RepeticionesRealizadas" /></td>
+                                <td><input type="number" min="0" class="form-control form-control-sm" @bind="serie.DuracionSegundosReal" /></td>
+                                <td><input type="number" min="0" step="0.5" class="form-control form-control-sm" @bind="serie.PesoKg" /></td>
+                                <td class="text-center"><input type="checkbox" class="form-check-input" @bind="serie.Completada" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => AnadirSerie(grupo)">Añadir serie</button>
+            </div>
+        </div>
+    }
+
+    <div class="mb-3">
+        <select class="form-select w-auto d-inline-block" @bind="ejercicioLibreId">
+            <option value="0">-- añadir ejercicio suelto --</option>
+            @foreach (var ej in ejerciciosDisponibles!)
+            {
+                <option value="@ej.Id">@ej.Nombre</option>
+            }
+        </select>
+        <button type="button" class="btn btn-outline-secondary" @onclick="AnadirEjercicioLibre">Añadir</button>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary" @onclick="Guardar">Guardar</button>
+        <a href="diario" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private List<Rutina>? rutinasDisponibles;
+    private List<Ejercicio>? ejerciciosDisponibles;
+    private List<GrupoEjercicio> gruposEjercicio = [];
+    private DateOnly fecha = DateOnly.FromDateTime(DateTime.Today);
+    private string? notas;
+    private int rutinaSeleccionadaId;
+    private int ejercicioLibreId;
+    private string? mensajeError;
+    private int usuarioId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var estado = await AuthState.GetAuthenticationStateAsync();
+        usuarioId = int.Parse(estado.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rutinasDisponibles = await db.Rutinas.Where(r => r.Activa).OrderBy(r => r.Nombre).ToListAsync();
+        ejerciciosDisponibles = await db.Ejercicios.Where(e => e.Activo).OrderBy(e => e.Nombre).ToListAsync();
+
+        if (Id is not null)
+        {
+            var sesion = await db.SesionesDiario
+                .Include(s => s.SesionEjercicios).ThenInclude(se => se.Ejercicio)
+                .Include(s => s.SesionEjercicios).ThenInclude(se => se.Series)
+                .FirstOrDefaultAsync(s => s.Id == Id.Value && s.UsuarioId == usuarioId);
+
+            if (sesion is null)
+            {
+                Navigation.NavigateTo("diario");
+                return;
+            }
+
+            fecha = sesion.Fecha;
+            notas = sesion.Notas;
+            gruposEjercicio = sesion.SesionEjercicios
+                .OrderBy(se => se.Orden)
+                .Select(se => new GrupoEjercicio
+                {
+                    EjercicioId = se.EjercicioId,
+                    NombreEjercicio = se.Ejercicio!.Nombre,
+                    Series = se.Series
+                        .OrderBy(s => s.NumeroSerie)
+                        .Select(s => new FilaSerie
+                        {
+                            NumeroSerie = s.NumeroSerie,
+                            RepeticionesRealizadas = s.RepeticionesRealizadas,
+                            DuracionSegundosReal = s.DuracionSegundosReal,
+                            PesoKg = s.PesoKg,
+                            Completada = s.Completada,
+                        }).ToList(),
+                }).ToList();
+        }
+    }
+
+    private async Task CargarDesdeRutina()
+    {
+        if (rutinaSeleccionadaId == 0) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var rutina = await db.Rutinas
+            .Include(r => r.RutinaEjercicios).ThenInclude(re => re.Ejercicio)
+            .FirstOrDefaultAsync(r => r.Id == rutinaSeleccionadaId);
+
+        if (rutina is null) return;
+
+        gruposEjercicio = rutina.RutinaEjercicios
+            .OrderBy(re => re.Orden)
+            .Select(re => new GrupoEjercicio
+            {
+                EjercicioId = re.EjercicioId,
+                NombreEjercicio = re.Ejercicio!.Nombre,
+                Series = Enumerable.Range(1, re.Series)
+                    .Select(n => new FilaSerie { NumeroSerie = n })
+                    .ToList(),
+            }).ToList();
+    }
+
+    private void AnadirEjercicioLibre()
+    {
+        if (ejercicioLibreId == 0) return;
+        var ejercicio = ejerciciosDisponibles!.First(e => e.Id == ejercicioLibreId);
+        gruposEjercicio.Add(new GrupoEjercicio
+        {
+            EjercicioId = ejercicio.Id,
+            NombreEjercicio = ejercicio.Nombre,
+            Series = [new FilaSerie { NumeroSerie = 1 }],
+        });
+        ejercicioLibreId = 0;
+    }
+
+    private void AnadirSerie(GrupoEjercicio grupo) =>
+        grupo.Series.Add(new FilaSerie { NumeroSerie = grupo.Series.Count + 1 });
+
+    private async Task Guardar()
+    {
+        if (gruposEjercicio.Count == 0)
+        {
+            mensajeError = "Añade al menos un ejercicio a la sesión.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        SesionDiario sesion;
+        if (Id is null)
+        {
+            sesion = new SesionDiario
+            {
+                UsuarioId = usuarioId,
+                RutinaId = rutinaSeleccionadaId == 0 ? null : rutinaSeleccionadaId,
+                Fecha = fecha,
+                Notas = notas,
+                FechaCreacion = DateTime.UtcNow,
+            };
+            db.SesionesDiario.Add(sesion);
+        }
+        else
+        {
+            var existente = await db.SesionesDiario
+                .Include(s => s.SesionEjercicios).ThenInclude(se => se.Series)
+                .FirstOrDefaultAsync(s => s.Id == Id.Value && s.UsuarioId == usuarioId);
+
+            if (existente is null)
+            {
+                mensajeError = "La sesión ya no existe.";
+                return;
+            }
+
+            existente.Fecha = fecha;
+            existente.Notas = notas;
+            foreach (var se in existente.SesionEjercicios)
+                db.SesionSeries.RemoveRange(se.Series);
+            db.SesionEjercicios.RemoveRange(existente.SesionEjercicios);
+            sesion = existente;
+        }
+
+        var orden = 1;
+        foreach (var grupo in gruposEjercicio)
+        {
+            var sesionEjercicio = new SesionEjercicio
+            {
+                SesionDiario = sesion,
+                EjercicioId = grupo.EjercicioId,
+                Orden = orden++,
+            };
+            db.SesionEjercicios.Add(sesionEjercicio);
+
+            foreach (var serie in grupo.Series)
+            {
+                db.SesionSeries.Add(new SesionSerie
+                {
+                    SesionEjercicio = sesionEjercicio,
+                    NumeroSerie = serie.NumeroSerie,
+                    RepeticionesRealizadas = serie.RepeticionesRealizadas,
+                    DuracionSegundosReal = serie.DuracionSegundosReal,
+                    PesoKg = serie.PesoKg,
+                    Completada = serie.Completada,
+                });
+            }
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            mensajeError = $"No se pudo guardar: {ex.Message}";
+            return;
+        }
+
+        Navigation.NavigateTo("diario");
+    }
+
+    private sealed class GrupoEjercicio
+    {
+        public int EjercicioId { get; set; }
+        public string NombreEjercicio { get; set; } = string.Empty;
+        public List<FilaSerie> Series { get; set; } = [];
+    }
+
+    private sealed class FilaSerie
+    {
+        public int NumeroSerie { get; set; }
+        public int? RepeticionesRealizadas { get; set; }
+        public int? DuracionSegundosReal { get; set; }
+        public decimal? PesoKg { get; set; }
+        public bool Completada { get; set; }
+    }
+}

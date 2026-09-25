@@ -1,0 +1,55 @@
+@page "/rutinas"
+@attribute [Authorize]
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Rutinas · Entrenamiento Fuerza</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Rutinas</h1>
+    <a href="rutinas/nueva" class="btn btn-primary">Nueva rutina</a>
+</div>
+
+@if (rutinas is null)
+{
+    <p>Cargando...</p>
+}
+else if (rutinas.Count == 0)
+{
+    <p class="text-muted">Todavía no hay rutinas. Crea la primera.</p>
+}
+else
+{
+    <div class="list-group">
+        @foreach (var rutina in rutinas)
+        {
+            <a href="@($"rutinas/{rutina.Id}")" class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between">
+                    <span class="fw-semibold">@rutina.Nombre</span>
+                    <span class="text-muted small">@rutina.RutinaEjercicios.Count ejercicio(s)</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(rutina.Descripcion))
+                {
+                    <div class="text-muted small">@rutina.Descripcion</div>
+                }
+            </a>
+        }
+    </div>
+}
+
+@code {
+    private List<Rutina>? rutinas;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rutinas = await db.Rutinas
+            .Where(r => r.Activa)
+            .Include(r => r.RutinaEjercicios)
+            .OrderBy(r => r.Nombre)
+            .ToListAsync();
+    }
+}

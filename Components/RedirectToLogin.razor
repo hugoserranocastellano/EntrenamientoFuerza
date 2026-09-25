@@ -1,0 +1,9 @@
+@inject NavigationManager Navigation
+
+@code {
+    protected override void OnInitialized()
+    {
+        var volverA = Uri.EscapeDataString(new Uri(Navigation.Uri).PathAndQuery.TrimStart('/'));
+        Navigation.NavigateTo($"/?volverA={volverA}", forceLoad: true);
+    }
+}

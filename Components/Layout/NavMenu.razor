@@ -1,0 +1,41 @@
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">Entrenamiento Fuerza</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="inicio" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Inicio
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="ejercicios">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Ejercicios
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="grupos-musculares">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Grupos musculares
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="rutinas">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Rutinas
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="diario">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Diario
+            </NavLink>
+        </div>
+    </nav>
+</div>

@@ -1,0 +1,274 @@
+@page "/rutinas/nueva"
+@page "/rutinas/{Id:int}"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthState
+@rendermode InteractiveServer
+
+<PageTitle>@(Id is null ? "Nueva rutina" : "Editar rutina") · Entrenamiento Fuerza</PageTitle>
+
+<h1>@(Id is null ? "Nueva rutina" : "Editar rutina")</h1>
+
+@if (modelo is null || ejerciciosDisponibles is null)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    @if (mensajeError is not null)
+    {
+        <div class="alert alert-danger">@mensajeError</div>
+    }
+
+    <EditForm Model="modelo" OnValidSubmit="Guardar">
+        <DataAnnotationsValidator />
+
+        <div class="row col-md-8">
+            <div class="mb-3">
+                <label class="form-label">Nombre</label>
+                <InputText class="form-control" @bind-Value="modelo.Nombre" />
+                <ValidationMessage For="() => modelo.Nombre" class="small" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Descripción</label>
+                <InputTextArea class="form-control" @bind-Value="modelo.Descripcion" rows="2" />
+            </div>
+        </div>
+
+        <h2 class="h5 mt-4">Ejercicios de la rutina</h2>
+
+        @if (filas.Count == 0)
+        {
+            <p class="text-muted">Añade al menos un ejercicio.</p>
+        }
+
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Ejercicio</th>
+                        <th style="width:90px">Series</th>
+                        <th style="width:140px">Tipo</th>
+                        <th style="width:110px">Repeticiones</th>
+                        <th style="width:110px">Duración (seg)</th>
+                        <th style="width:110px">Descanso (seg)</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < filas.Count; i++)
+                    {
+                        var fila = filas[i];
+                        var mismoGrupoQueAnterior = i > 0 && GrupoDe(fila.EjercicioId) is not null
+                            && GrupoDe(fila.EjercicioId) == GrupoDe(filas[i - 1].EjercicioId);
+                        <tr>
+                            <td>
+                                <select class="form-select" @bind="fila.EjercicioId">
+                                    <option value="0">-- selecciona --</option>
+                                    @foreach (var ej in ejerciciosDisponibles)
+                                    {
+                                        <option value="@ej.Id">@ej.Nombre@(ej.GrupoMuscular is null ? "" : $" ({ej.GrupoMuscular.Nombre})")</option>
+                                    }
+                                </select>
+                                @if (mismoGrupoQueAnterior)
+                                {
+                                    <div class="form-text text-warning">Mismo grupo muscular que el anterior</div>
+                                }
+                            </td>
+                            <td><input type="number" min="1" class="form-control" @bind="fila.Series" /></td>
+                            <td>
+                                <select class="form-select" @bind="fila.PorRepeticiones">
+                                    <option value="true">Repeticiones</option>
+                                    <option value="false">Duración</option>
+                                </select>
+                            </td>
+                            <td>
+                                @if (fila.PorRepeticiones)
+                                {
+                                    <input type="number" min="1" class="form-control" @bind="fila.Repeticiones" />
+                                }
+                            </td>
+                            <td>
+                                @if (!fila.PorRepeticiones)
+                                {
+                                    <input type="number" min="1" class="form-control" @bind="fila.DuracionSegundos" />
+                                }
+                            </td>
+                            <td><input type="number" min="0" class="form-control" @bind="fila.DescansoSegundos" /></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => filas.Remove(fila)">Quitar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <button type="button" class="btn btn-outline-secondary mb-3" @onclick="AnadirFila">Añadir ejercicio</button>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="rutinas" class="btn btn-outline-secondary">Cancelar</a>
+            @if (Id is not null)
+            {
+                <button type="button" class="btn btn-outline-danger ms-auto" @onclick="Desactivar">Eliminar</button>
+            }
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private DatosRutina? modelo;
+    private List<Ejercicio>? ejerciciosDisponibles;
+    private List<FilaEjercicio> filas = [];
+    private string? mensajeError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        ejerciciosDisponibles = await db.Ejercicios.Where(e => e.Activo).Include(e => e.GrupoMuscular).OrderBy(e => e.Nombre).ToListAsync();
+
+        if (Id is null)
+        {
+            modelo = new DatosRutina();
+            return;
+        }
+
+        var rutina = await db.Rutinas.Include(r => r.RutinaEjercicios).FirstOrDefaultAsync(r => r.Id == Id.Value);
+        if (rutina is null)
+        {
+            Navigation.NavigateTo("rutinas");
+            return;
+        }
+
+        modelo = new DatosRutina { Nombre = rutina.Nombre, Descripcion = rutina.Descripcion };
+        filas = rutina.RutinaEjercicios
+            .OrderBy(re => re.Orden)
+            .Select(re => new FilaEjercicio
+            {
+                EjercicioId = re.EjercicioId,
+                Series = re.Series,
+                PorRepeticiones = re.Repeticiones is not null,
+                Repeticiones = re.Repeticiones,
+                DuracionSegundos = re.DuracionSegundos,
+                DescansoSegundos = re.DescansoSegundos,
+            })
+            .ToList();
+    }
+
+    private void AnadirFila() => filas.Add(new FilaEjercicio { Series = 3, PorRepeticiones = true, DescansoSegundos = 60 });
+
+    private int? GrupoDe(int ejercicioId) =>
+        ejerciciosDisponibles?.FirstOrDefault(e => e.Id == ejercicioId)?.GrupoMuscularId;
+
+    private async Task<int> ObtenerUsuarioIdAsync()
+    {
+        var estado = await AuthState.GetAuthenticationStateAsync();
+        var idTexto = estado.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(idTexto, out var id) ? id : throw new InvalidOperationException("Usuario no identificado.");
+    }
+
+    private async Task Guardar()
+    {
+        var filasValidas = filas.Where(f => f.EjercicioId > 0).ToList();
+        if (filasValidas.Count == 0)
+        {
+            mensajeError = "Añade al menos un ejercicio válido.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        Rutina rutina;
+        if (Id is null)
+        {
+            rutina = new Rutina
+            {
+                Nombre = modelo!.Nombre!,
+                Descripcion = modelo.Descripcion,
+                CreadoPorId = await ObtenerUsuarioIdAsync(),
+                FechaCreacion = DateTime.UtcNow,
+            };
+            db.Rutinas.Add(rutina);
+        }
+        else
+        {
+            var existente = await db.Rutinas.Include(r => r.RutinaEjercicios).FirstOrDefaultAsync(r => r.Id == Id.Value);
+            if (existente is null)
+            {
+                mensajeError = "La rutina ya no existe.";
+                return;
+            }
+
+            existente.Nombre = modelo!.Nombre!;
+            existente.Descripcion = modelo.Descripcion;
+            db.RutinaEjercicios.RemoveRange(existente.RutinaEjercicios);
+            rutina = existente;
+        }
+
+        var orden = 1;
+        foreach (var fila in filasValidas)
+        {
+            db.RutinaEjercicios.Add(new RutinaEjercicio
+            {
+                Rutina = rutina,
+                EjercicioId = fila.EjercicioId,
+                Orden = orden++,
+                Series = fila.Series,
+                Repeticiones = fila.PorRepeticiones ? fila.Repeticiones : null,
+                DuracionSegundos = fila.PorRepeticiones ? null : fila.DuracionSegundos,
+                DescansoSegundos = fila.DescansoSegundos,
+            });
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            mensajeError = $"No se pudo guardar: {ex.Message}";
+            return;
+        }
+
+        Navigation.NavigateTo("rutinas");
+    }
+
+    private async Task Desactivar()
+    {
+        if (Id is null) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Rutinas.Where(r => r.Id == Id.Value)
+            .ExecuteUpdateAsync(r => r.SetProperty(x => x.Activa, false));
+
+        Navigation.NavigateTo("rutinas");
+    }
+
+    private sealed class DatosRutina
+    {
+        [Required(ErrorMessage = "Indica un nombre.")]
+        public string? Nombre { get; set; }
+        public string? Descripcion { get; set; }
+    }
+
+    private sealed class FilaEjercicio
+    {
+        public int EjercicioId { get; set; }
+        public int Series { get; set; } = 3;
+        public bool PorRepeticiones { get; set; } = true;
+        public int? Repeticiones { get; set; }
+        public int? DuracionSegundos { get; set; }
+        public int DescansoSegundos { get; set; } = 60;
+    }
+}

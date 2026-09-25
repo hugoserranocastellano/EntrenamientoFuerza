@@ -1,0 +1,60 @@
+@page "/diario"
+@attribute [Authorize]
+@using System.Security.Claims
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthState
+@rendermode InteractiveServer
+
+<PageTitle>Diario · Entrenamiento Fuerza</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Diario</h1>
+    <a href="diario/nueva" class="btn btn-primary">Nueva sesión</a>
+</div>
+
+@if (sesiones is null)
+{
+    <p>Cargando...</p>
+}
+else if (sesiones.Count == 0)
+{
+    <p class="text-muted">Todavía no has registrado ninguna sesión.</p>
+}
+else
+{
+    <div class="list-group">
+        @foreach (var sesion in sesiones)
+        {
+            <a href="@($"diario/{sesion.Id}")" class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between">
+                    <span class="fw-semibold">@sesion.Fecha.ToString("dd/MM/yyyy")</span>
+                    <span class="text-muted small">@(sesion.Rutina?.Nombre ?? "Sesión libre")</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(sesion.Notas))
+                {
+                    <div class="text-muted small">@sesion.Notas</div>
+                }
+            </a>
+        }
+    </div>
+}
+
+@code {
+    private List<SesionDiario>? sesiones;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var estado = await AuthState.GetAuthenticationStateAsync();
+        var usuarioId = int.Parse(estado.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        sesiones = await db.SesionesDiario
+            .Where(s => s.UsuarioId == usuarioId)
+            .Include(s => s.Rutina)
+            .OrderByDescending(s => s.Fecha)
+            .ToListAsync();
+    }
+}

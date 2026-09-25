@@ -1,0 +1,165 @@
+@page "/ejercicios/nuevo"
+@page "/ejercicios/{Id:int}"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>@(Id is null ? "Nuevo ejercicio" : "Editar ejercicio") · Entrenamiento Fuerza</PageTitle>
+
+<h1>@(Id is null ? "Nuevo ejercicio" : "Editar ejercicio")</h1>
+
+@if (modelo is null || gruposMusculares is null)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    @if (mensajeError is not null)
+    {
+        <div class="alert alert-danger">@mensajeError</div>
+    }
+
+    <EditForm Model="modelo" OnValidSubmit="Guardar" class="col-md-6">
+        <DataAnnotationsValidator />
+
+        <div class="mb-3">
+            <label class="form-label">Nombre</label>
+            <InputText class="form-control" @bind-Value="modelo.Nombre" />
+            <ValidationMessage For="() => modelo.Nombre" class="small" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Descripción</label>
+            <InputTextArea class="form-control" @bind-Value="modelo.Descripcion" rows="3" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Vídeo (enlace de YouTube)</label>
+            <InputText class="form-control" @bind-Value="modelo.VideoUrl" placeholder="https://www.youtube.com/watch?v=..." />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Grupo muscular</label>
+            <InputSelect class="form-select" @bind-Value="modelo.GrupoMuscularId">
+                <option value="">-- sin especificar --</option>
+                @foreach (var grupo in gruposMusculares!)
+                {
+                    <option value="@grupo.Id">@grupo.Nombre</option>
+                }
+            </InputSelect>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="ejercicios" class="btn btn-outline-secondary">Cancelar</a>
+            @if (Id is not null)
+            {
+                <button type="button" class="btn btn-outline-danger ms-auto" @onclick="Desactivar">Eliminar</button>
+            }
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private DatosEjercicio? modelo;
+    private List<GrupoMuscular>? gruposMusculares;
+    private string? mensajeError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        gruposMusculares = await db.GruposMusculares.OrderBy(g => g.Nombre).ToListAsync();
+
+        if (Id is null)
+        {
+            modelo = new DatosEjercicio();
+            return;
+        }
+
+        var ejercicio = await db.Ejercicios.FindAsync(Id.Value);
+        if (ejercicio is null)
+        {
+            Navigation.NavigateTo("ejercicios");
+            return;
+        }
+
+        modelo = new DatosEjercicio
+        {
+            Nombre = ejercicio.Nombre,
+            Descripcion = ejercicio.Descripcion,
+            VideoUrl = ejercicio.VideoUrl,
+            GrupoMuscularId = ejercicio.GrupoMuscularId,
+        };
+    }
+
+    private async Task Guardar()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        if (Id is null)
+        {
+            db.Ejercicios.Add(new Ejercicio
+            {
+                Nombre = modelo!.Nombre!,
+                Descripcion = modelo.Descripcion,
+                VideoUrl = modelo.VideoUrl,
+                GrupoMuscularId = modelo.GrupoMuscularId,
+                FechaCreacion = DateTime.UtcNow,
+            });
+        }
+        else
+        {
+            var ejercicio = await db.Ejercicios.FindAsync(Id.Value);
+            if (ejercicio is null)
+            {
+                mensajeError = "El ejercicio ya no existe.";
+                return;
+            }
+
+            ejercicio.Nombre = modelo!.Nombre!;
+            ejercicio.Descripcion = modelo.Descripcion;
+            ejercicio.VideoUrl = modelo.VideoUrl;
+            ejercicio.GrupoMuscularId = modelo.GrupoMuscularId;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            mensajeError = $"No se pudo guardar: {ex.Message}";
+            return;
+        }
+
+        Navigation.NavigateTo("ejercicios");
+    }
+
+    private async Task Desactivar()
+    {
+        if (Id is null) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Ejercicios.Where(e => e.Id == Id.Value)
+            .ExecuteUpdateAsync(e => e.SetProperty(x => x.Activo, false));
+
+        Navigation.NavigateTo("ejercicios");
+    }
+
+    private sealed class DatosEjercicio
+    {
+        [Required(ErrorMessage = "Indica un nombre.")]
+        public string? Nombre { get; set; }
+        public string? Descripcion { get; set; }
+        public string? VideoUrl { get; set; }
+        public int? GrupoMuscularId { get; set; }
+    }
+}

@@ -1,0 +1,88 @@
+@page "/grupos-musculares"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Grupos musculares · Entrenamiento Fuerza</PageTitle>
+
+<h1>Grupos musculares</h1>
+
+@if (mensajeError is not null)
+{
+    <div class="alert alert-danger">@mensajeError</div>
+}
+
+@if (grupos is null)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    <ul class="list-group mb-3 col-md-4">
+        @foreach (var grupo in grupos)
+        {
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                @grupo.Nombre
+                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(grupo)">Eliminar</button>
+            </li>
+        }
+    </ul>
+
+    <EditForm Model="nuevoModelo" OnValidSubmit="Anadir" class="col-md-4 d-flex gap-2">
+        <DataAnnotationsValidator />
+        <InputText class="form-control" @bind-Value="nuevoModelo.Nombre" placeholder="Nombre del grupo (ej. Piernas)" />
+        <button type="submit" class="btn btn-primary text-nowrap">Añadir</button>
+    </EditForm>
+}
+
+@code {
+    private List<GrupoMuscular>? grupos;
+    private DatosGrupo nuevoModelo = new();
+    private string? mensajeError;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        grupos = await db.GruposMusculares.OrderBy(g => g.Nombre).ToListAsync();
+    }
+
+    private async Task Anadir()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.GruposMusculares.Add(new GrupoMuscular { Nombre = nuevoModelo.Nombre!.Trim() });
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            mensajeError = "Ya existe un grupo con ese nombre.";
+            return;
+        }
+
+        nuevoModelo = new DatosGrupo();
+        mensajeError = null;
+        await Cargar();
+    }
+
+    private async Task Eliminar(GrupoMuscular grupo)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // Los ejercicios que lo usaban se quedan sin grupo (SetNull), no se borran.
+        await db.GruposMusculares.Where(g => g.Id == grupo.Id).ExecuteDeleteAsync();
+        await Cargar();
+    }
+
+    private sealed class DatosGrupo
+    {
+        [Required(ErrorMessage = "Indica un nombre.")]
+        public string? Nombre { get; set; }
+    }
+}

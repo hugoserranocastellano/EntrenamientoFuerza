@@ -1,0 +1,139 @@
+@page "/"
+@layout LoginLayout
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using EntrenamientoFuerza.Services
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject UsuarioAuth UsuarioAuth
+@inject NavigationManager Navigation
+
+@* Sin render mode interactivo a propósito: SignInAsync necesita el HttpContext
+   de la petición, que sólo existe mientras la página se renderiza en servidor. *@
+
+<PageTitle>Acceso · Entrenamiento Fuerza</PageTitle>
+
+<div class="text-center mb-4">
+    <h1 class="h4 mt-3 mb-1">Entrenamiento Fuerza</h1>
+</div>
+
+@if (mensajeError is not null)
+{
+    <div class="alert alert-danger py-2" role="alert">@mensajeError</div>
+}
+
+<EditForm Model="Entrada" FormName="acceso" OnValidSubmit="Acceder" method="post" id="formAcceso">
+    <DataAnnotationsValidator />
+
+    <div class="mb-3">
+        <label for="usuario" class="form-label">Usuario</label>
+        <InputText id="usuario" class="form-control" @bind-Value="Entrada!.NombreUsuario"
+                   autocomplete="username" placeholder="Tu usuario" />
+        <ValidationMessage For="() => Entrada!.NombreUsuario" class="small" />
+    </div>
+
+    <div class="mb-4">
+        <label for="password" class="form-label">Contraseña</label>
+        <InputText id="password" type="password" class="form-control" @bind-Value="Entrada!.Password"
+                   autocomplete="current-password" placeholder="Tu contraseña" />
+        <ValidationMessage For="() => Entrada!.Password" class="small" />
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100" id="btnEntrar">
+        <span id="spinnerEntrar" class="spinner-border spinner-border-sm me-2 d-none" aria-hidden="true"></span>
+        <span id="textoEntrar">Entrar</span>
+    </button>
+</EditForm>
+
+<script>
+    (function () {
+        var form = document.getElementById('formAcceso');
+        if (!form) { return; }
+        form.addEventListener('submit', function () {
+            document.getElementById('btnEntrar').disabled = true;
+            document.getElementById('spinnerEntrar').classList.remove('d-none');
+            document.getElementById('textoEntrar').textContent = 'Entrando...';
+        });
+    })();
+</script>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    // El nombre de esta propiedad es el prefijo de los campos del formulario
+    // (Entrada.NombreUsuario, Entrada.Password): si se renombra, el POST no enlaza.
+    [SupplyParameterFromForm]
+    private DatosAcceso? Entrada { get; set; }
+
+    [SupplyParameterFromQuery(Name = "volverA")]
+    private string? VolverA { get; set; }
+
+    private string? mensajeError;
+
+    protected override void OnInitialized()
+    {
+        Entrada ??= new DatosAcceso();
+
+        // Quien ya tiene la cookie no necesita volver a identificarse.
+        if (HttpContext?.User.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo(DestinoSeguro(), forceLoad: false);
+        }
+    }
+
+    private async Task Acceder()
+    {
+        var datos = Entrada!;
+
+        if (HttpContext is null)
+        {
+            mensajeError = "No se puede iniciar sesión en este momento. Recarga la página.";
+            return;
+        }
+
+        var usuario = await UsuarioAuth.ValidarAsync(datos.NombreUsuario!, datos.Password!);
+
+        // Un único mensaje para usuario inexistente y contraseña incorrecta: así no se puede
+        // averiguar qué usuarios existen probando uno a uno.
+        if (usuario is null)
+        {
+            mensajeError = "Usuario o contraseña incorrectos.";
+            return;
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
+            new(ClaimTypes.Name, usuario.Nombre),
+            new(ClaimTypes.Role, usuario.Rol),
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+        Navigation.NavigateTo(DestinoSeguro(), forceLoad: true);
+    }
+
+    // Sólo rutas internas: un volverA con http:// sería un redirect abierto.
+    private string DestinoSeguro()
+    {
+        if (string.IsNullOrWhiteSpace(VolverA)
+            || VolverA.StartsWith("//", StringComparison.Ordinal)
+            || VolverA.Contains("://", StringComparison.Ordinal))
+        {
+            return "inicio";
+        }
+
+        return VolverA.TrimStart('/');
+    }
+
+    private sealed class DatosAcceso
+    {
+        [Required(ErrorMessage = "Indica tu usuario.")]
+        public string? NombreUsuario { get; set; }
+
+        [Required(ErrorMessage = "Indica tu contraseña.")]
+        public string? Password { get; set; }
+    }
+}

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: entrenamiento-fuerza
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    healthCheckPath: /healthz
+    # Blazor Server mantiene un circuito SignalR por usuario: sin afinidad de sesión
+    # hay que quedarse en una sola instancia.
+    numInstances: 1
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__Supabase
+        sync: false
