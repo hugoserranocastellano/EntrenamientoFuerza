@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @using EntrenamientoFuerza.Data
 @using EntrenamientoFuerza.Models
+@using EntrenamientoFuerza.Services
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @rendermode InteractiveServer
@@ -28,11 +29,12 @@ else
         {
             <div class="col-md-4">
                 <div class="card h-100">
-                    @if (!string.IsNullOrWhiteSpace(ejercicio.VideoUrl))
+                    @{ var miniatura = YoutubeHelper.MiniaturaUrl(ejercicio.VideoUrl); }
+                    @if (miniatura is not null)
                     {
-                        <div class="ratio ratio-16x9">
-                            <iframe src="@EmbedUrl(ejercicio.VideoUrl)" allowfullscreen></iframe>
-                        </div>
+                        <a href="@($"ejercicios/{ejercicio.Id}")">
+                            <img src="@miniatura" class="card-img-top" alt="Vídeo de @ejercicio.Nombre" />
+                        </a>
                     }
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start">
@@ -74,30 +76,4 @@ else
             .ToListAsync();
     }
 
-    // Convierte un enlace normal de YouTube (watch?v=, youtu.be/, shorts/) en su URL de embed.
-    private static string EmbedUrl(string url)
-    {
-        var id = ExtraerIdYouTube(url);
-        return id is null ? url : $"https://www.youtube.com/embed/{id}";
-    }
-
-    private static string? ExtraerIdYouTube(string url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-            return null;
-
-        if (uri.Host.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
-            return uri.AbsolutePath.Trim('/');
-
-        if (uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
-        {
-            if (uri.AbsolutePath.StartsWith("/shorts/", StringComparison.OrdinalIgnoreCase))
-                return uri.AbsolutePath["/shorts/".Length..].Trim('/');
-
-            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
-            return query.TryGetValue("v", out var v) ? v.ToString() : null;
-        }
-
-        return null;
-    }
 }

@@ -4,9 +4,11 @@
 @using System.ComponentModel.DataAnnotations
 @using EntrenamientoFuerza.Data
 @using EntrenamientoFuerza.Models
+@using EntrenamientoFuerza.Services
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @rendermode InteractiveServer
 
 <PageTitle>@(Id is null ? "Nuevo ejercicio" : "Editar ejercicio") · Entrenamiento Fuerza</PageTitle>
@@ -40,7 +42,31 @@ else
 
         <div class="mb-3">
             <label class="form-label">Vídeo (enlace de YouTube)</label>
-            <InputText class="form-control" @bind-Value="modelo.VideoUrl" placeholder="https://www.youtube.com/watch?v=..." />
+            <div class="input-group">
+                <InputText class="form-control" @bind-Value="modelo.VideoUrl" placeholder="https://www.youtube.com/watch?v=..." />
+                <button type="button" class="btn btn-outline-secondary" @onclick="Pegar">Pegar</button>
+            </div>
+            <div class="form-text">
+                @if (!string.IsNullOrWhiteSpace(modelo.Nombre))
+                {
+                    <a href="@YoutubeHelper.UrlBusqueda(modelo.Nombre + " ejercicio técnica")" target="_blank" rel="noopener">
+                        Buscar "@modelo.Nombre" en YouTube
+                    </a>
+                    <text> — copia la URL del vídeo que quieras y vuelve aquí a pulsar "Pegar".</text>
+                }
+                else
+                {
+                    <text>Pon primero un nombre para poder buscarlo en YouTube.</text>
+                }
+            </div>
+
+            @{ var embedUrl = string.IsNullOrWhiteSpace(modelo.VideoUrl) ? null : YoutubeHelper.EmbedUrl(modelo.VideoUrl); }
+            @if (embedUrl is not null)
+            {
+                <div class="ratio ratio-16x9 mt-2" style="max-width: 24rem;">
+                    <iframe src="@embedUrl" allowfullscreen></iframe>
+                </div>
+            }
         </div>
 
         <div class="mb-3">
@@ -118,6 +144,22 @@ else
             GrupoMuscularId = ejercicio.GrupoMuscularId,
             AccesorioIds = ejercicio.Accesorios.Select(a => a.Id).ToHashSet(),
         };
+    }
+
+    private async Task Pegar()
+    {
+        var modulo = await JS.InvokeAsync<IJSObjectReference>("import", "./js/clipboard.js");
+        var texto = await modulo.InvokeAsync<string?>("leer");
+        await modulo.DisposeAsync();
+
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            modelo!.VideoUrl = texto.Trim();
+        }
+        else
+        {
+            mensajeError = "No se pudo leer el portapapeles. Pega el enlace a mano en el campo.";
+        }
     }
 
     private void AlternarAccesorio(int accesorioId, bool marcado)
