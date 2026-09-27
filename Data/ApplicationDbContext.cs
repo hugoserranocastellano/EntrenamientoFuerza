@@ -39,6 +39,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.Property(x => x.Nombre).HasColumnName("nombre").HasMaxLength(150).IsRequired();
             e.Property(x => x.Descripcion).HasColumnName("descripcion");
             e.Property(x => x.VideoUrl).HasColumnName("video_url").HasMaxLength(500);
+            e.Property(x => x.ImagenUrl).HasColumnName("imagen_url").HasMaxLength(500);
             e.Property(x => x.GrupoMuscularId).HasColumnName("grupo_muscular_id");
             e.Property(x => x.Activo).HasColumnName("activo").HasDefaultValue(true);
             e.Property(x => x.FechaCreacion).HasColumnName("fecha_creacion").HasDefaultValueSql("now()");

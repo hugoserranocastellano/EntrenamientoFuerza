@@ -57,7 +57,7 @@ else
                 var indice = i;
                 var fila = filas[indice];
                 var ejercicio = ejerciciosDisponibles.First(e => e.Id == fila.EjercicioId);
-                var miniatura = YoutubeHelper.MiniaturaUrl(ejercicio.VideoUrl);
+                var miniatura = ImagenHelper.MiniaturaDe(ejercicio);
                 var mismoGrupoQueAnterior = indice > 0 && ejercicio.GrupoMuscularId is not null
                     && ejercicio.GrupoMuscularId == ejerciciosDisponibles.First(e => e.Id == filas[indice - 1].EjercicioId).GrupoMuscularId;
 
@@ -169,7 +169,7 @@ else
                         <div class="row g-2">
                             @foreach (var ej in ejerciciosDisponibles!)
                             {
-                                var miniaturaModal = YoutubeHelper.MiniaturaUrl(ej.VideoUrl);
+                                var miniaturaModal = ImagenHelper.MiniaturaDe(ej);
                                 <div class="col-6 col-md-4">
                                     <button type="button" class="btn btn-outline-secondary w-100 h-100 p-2 text-start" @onclick="() => SeleccionarEjercicio(ej.Id)">
                                         @if (miniaturaModal is not null)

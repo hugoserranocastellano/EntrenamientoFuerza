@@ -12,7 +12,7 @@
                     <span class="usuario-actual">@context.User.Identity?.Name</span>
                     <form method="post" action="/logout" class="d-inline">
                         <AntiforgeryToken />
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Salir</button>
+                        <button type="submit" class="btn btn-sm btn-secondary">Salir</button>
                     </form>
                 </Authorized>
             </AuthorizeView>

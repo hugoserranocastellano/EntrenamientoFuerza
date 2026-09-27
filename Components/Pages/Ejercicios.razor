@@ -29,7 +29,7 @@ else
         {
             <div class="col-md-4">
                 <div class="card h-100">
-                    @{ var miniatura = YoutubeHelper.MiniaturaUrl(ejercicio.VideoUrl); }
+                    @{ var miniatura = ImagenHelper.MiniaturaDe(ejercicio); }
                     @if (miniatura is not null)
                     {
                         <a href="@($"ejercicios/{ejercicio.Id}")">

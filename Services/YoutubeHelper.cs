@@ -40,3 +40,14 @@ public static class YoutubeHelper
     public static string UrlBusqueda(string terminos) =>
         $"https://www.youtube.com/results?search_query={Uri.EscapeDataString(terminos)}";
 }
+
+public static class ImagenHelper
+{
+    // La imagen propia (subida a mano, más estandarizada) tiene prioridad; si no hay,
+    // se recurre a la miniatura del vídeo de YouTube como alternativa.
+    public static string? MiniaturaDe(Models.Ejercicio ejercicio) =>
+        !string.IsNullOrWhiteSpace(ejercicio.ImagenUrl) ? ejercicio.ImagenUrl : YoutubeHelper.MiniaturaUrl(ejercicio.VideoUrl);
+
+    public static string UrlBusquedaImagenes(string terminos) =>
+        $"https://www.google.com/search?tbm=isch&q={Uri.EscapeDataString(terminos)}";
+}

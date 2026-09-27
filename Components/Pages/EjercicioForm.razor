@@ -44,7 +44,7 @@ else
             <label class="form-label">Vídeo (enlace de YouTube)</label>
             <div class="input-group">
                 <InputText class="form-control" @bind-Value="modelo.VideoUrl" placeholder="https://www.youtube.com/watch?v=..." />
-                <button type="button" class="btn btn-outline-secondary" @onclick="Pegar">Pegar</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => Pegar(false)">Pegar</button>
             </div>
             <div class="form-text">
                 @if (!string.IsNullOrWhiteSpace(modelo.Nombre))
@@ -66,6 +66,32 @@ else
                 <div class="ratio ratio-16x9 mt-2" style="max-width: 24rem;">
                     <iframe src="@embedUrl" allowfullscreen></iframe>
                 </div>
+            }
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Imagen o GIF (opcional, más estandarizado que la miniatura del vídeo)</label>
+            <div class="input-group">
+                <InputText class="form-control" @bind-Value="modelo.ImagenUrl" placeholder="https://..." />
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => Pegar(true)">Pegar</button>
+            </div>
+            <div class="form-text">
+                @if (!string.IsNullOrWhiteSpace(modelo.Nombre))
+                {
+                    <a href="@ImagenHelper.UrlBusquedaImagenes(modelo.Nombre + " ejercicio ilustracion")" target="_blank" rel="noopener">
+                        Buscar imagen de "@modelo.Nombre"
+                    </a>
+                    <text> — copia la URL de la imagen y vuelve aquí a pulsar "Pegar".</text>
+                }
+                else
+                {
+                    <text>Pon primero un nombre para poder buscarla.</text>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(modelo.ImagenUrl))
+            {
+                <img src="@modelo.ImagenUrl" class="rounded mt-2" style="max-width: 12rem; max-height: 12rem; object-fit: cover;" alt="" />
             }
         </div>
 
@@ -141,12 +167,13 @@ else
             Nombre = ejercicio.Nombre,
             Descripcion = ejercicio.Descripcion,
             VideoUrl = ejercicio.VideoUrl,
+            ImagenUrl = ejercicio.ImagenUrl,
             GrupoMuscularId = ejercicio.GrupoMuscularId,
             AccesorioIds = ejercicio.Accesorios.Select(a => a.Id).ToHashSet(),
         };
     }
 
-    private async Task Pegar()
+    private async Task Pegar(bool esImagen)
     {
         var modulo = await JS.InvokeAsync<IJSObjectReference>("import", "./js/clipboard.js");
         var texto = await modulo.InvokeAsync<string?>("leer");
@@ -154,7 +181,10 @@ else
 
         if (!string.IsNullOrWhiteSpace(texto))
         {
-            modelo!.VideoUrl = texto.Trim();
+            if (esImagen)
+                modelo!.ImagenUrl = texto.Trim();
+            else
+                modelo!.VideoUrl = texto.Trim();
         }
         else
         {
@@ -183,6 +213,7 @@ else
                 Nombre = modelo!.Nombre!,
                 Descripcion = modelo.Descripcion,
                 VideoUrl = modelo.VideoUrl,
+                ImagenUrl = modelo.ImagenUrl,
                 GrupoMuscularId = modelo.GrupoMuscularId,
                 FechaCreacion = DateTime.UtcNow,
             };
@@ -201,6 +232,7 @@ else
             ejercicio.Nombre = modelo!.Nombre!;
             ejercicio.Descripcion = modelo.Descripcion;
             ejercicio.VideoUrl = modelo.VideoUrl;
+            ejercicio.ImagenUrl = modelo.ImagenUrl;
             ejercicio.GrupoMuscularId = modelo.GrupoMuscularId;
             ejercicio.Accesorios.Clear();
             ejercicio.Accesorios.AddRange(accesoriosElegidos);
@@ -236,6 +268,7 @@ else
         public string? Nombre { get; set; }
         public string? Descripcion { get; set; }
         public string? VideoUrl { get; set; }
+        public string? ImagenUrl { get; set; }
         public int? GrupoMuscularId { get; set; }
         public HashSet<int> AccesorioIds { get; set; } = [];
     }

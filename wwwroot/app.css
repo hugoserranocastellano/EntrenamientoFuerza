@@ -1,38 +1,36 @@
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    background-color: #ff5f00;
+    background-color: #f5f7fa;
 }
 
 a, .btn-link {
-    color: #cc3d00;
+    color: #1a56db;
 }
 
 .btn-primary {
     color: #fff;
-    background-color: #ff5f00;
-    border-color: #e55500;
+    background-color: #1a56db;
+    border-color: #1747b0;
 }
 
 .btn-primary:hover, .btn-primary:active {
-    background-color: #e55500;
-    border-color: #cc3d00;
+    background-color: #1747b0;
+    border-color: #123a8f;
 }
 
-/* El azul por defecto de Bootstrap (btn-outline-primary) no se lee bien sobre el
-   fondo naranja de toda la app: lo pasamos a blanco. */
 .btn-outline-primary {
-    color: #fff;
-    border-color: #fff;
+    color: #1a56db;
+    border-color: #1a56db;
 }
 
 .btn-outline-primary:hover, .btn-outline-primary:active {
-    color: #ff5f00;
-    background-color: #fff;
-    border-color: #fff;
+    color: #fff;
+    background-color: #1a56db;
+    border-color: #1a56db;
 }
 
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #ff9a5c;
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #7ea6f2;
 }
 
 .content {
