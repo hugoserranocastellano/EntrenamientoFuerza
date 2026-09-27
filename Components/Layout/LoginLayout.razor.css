@@ -7,6 +7,13 @@
     background-image: linear-gradient(160deg, #ff6a00 0%, #ff4d00 55%, #cc3d00 100%);
 }
 
+.login-logo {
+    width: 5.5rem;
+    height: 5.5rem;
+    border-radius: 50%;
+    box-shadow: 0 0.4rem 1rem rgba(0, 0, 0, 0.25);
+}
+
 .login-card {
     width: 100%;
     max-width: 25rem;
