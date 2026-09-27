@@ -8,6 +8,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Ejercicio> Ejercicios => Set<Ejercicio>();
     public DbSet<GrupoMuscular> GruposMusculares => Set<GrupoMuscular>();
+    public DbSet<Accesorio> Accesorios => Set<Accesorio>();
     public DbSet<Rutina> Rutinas => Set<Rutina>();
     public DbSet<RutinaEjercicio> RutinaEjercicios => Set<RutinaEjercicio>();
     public DbSet<SesionDiario> SesionesDiario => Set<SesionDiario>();
@@ -56,6 +57,31 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.Property(x => x.Nombre).HasColumnName("nombre").HasMaxLength(50).IsRequired();
             e.HasIndex(x => x.Nombre).IsUnique();
         });
+
+        modelBuilder.Entity<Accesorio>(e =>
+        {
+            e.ToTable("accesorios");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Nombre).HasColumnName("nombre").HasMaxLength(50).IsRequired();
+            e.HasIndex(x => x.Nombre).IsUnique();
+        });
+
+        // Muchos-a-muchos plano (sin campos propios): un ejercicio puede usar varios
+        // accesorios y un accesorio se usa en varios ejercicios.
+        modelBuilder.Entity<Ejercicio>()
+            .HasMany(e => e.Accesorios)
+            .WithMany(a => a.Ejercicios)
+            .UsingEntity<Dictionary<string, object>>(
+                "ejercicio_accesorios",
+                j => j.HasOne<Accesorio>().WithMany().HasForeignKey("accesorio_id").OnDelete(DeleteBehavior.Cascade),
+                j => j.HasOne<Ejercicio>().WithMany().HasForeignKey("ejercicio_id").OnDelete(DeleteBehavior.Cascade),
+                j =>
+                {
+                    j.Property<int>("ejercicio_id");
+                    j.Property<int>("accesorio_id");
+                    j.HasKey("ejercicio_id", "accesorio_id");
+                });
 
         modelBuilder.Entity<Rutina>(e =>
         {

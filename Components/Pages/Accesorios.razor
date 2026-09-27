@@ -1,0 +1,95 @@
+@page "/accesorios"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Accesorios · Entrenamiento Fuerza</PageTitle>
+
+<h1>Accesorios</h1>
+
+@if (mensajeError is not null)
+{
+    <div class="alert alert-danger">@mensajeError</div>
+}
+
+@if (accesorios is null)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    <ul class="list-group mb-3 col-md-4">
+        @foreach (var accesorio in accesorios)
+        {
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                @accesorio.Nombre
+                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(accesorio)">Eliminar</button>
+            </li>
+        }
+    </ul>
+
+    <EditForm Model="nuevoModelo" OnValidSubmit="Anadir" class="col-md-4 d-flex gap-2">
+        <DataAnnotationsValidator />
+        <InputText class="form-control" @bind-Value="nuevoModelo.Nombre" placeholder="Nombre (ej. Mancuernas)" />
+        <button type="submit" class="btn btn-primary text-nowrap">Añadir</button>
+    </EditForm>
+}
+
+@code {
+    private List<Accesorio>? accesorios;
+    private DatosAccesorio nuevoModelo = new();
+    private string? mensajeError;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        accesorios = await db.Accesorios.OrderBy(a => a.Nombre).ToListAsync();
+    }
+
+    private async Task Anadir()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Accesorios.Add(new Accesorio { Nombre = nuevoModelo.Nombre!.Trim() });
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            mensajeError = "Ya existe un accesorio con ese nombre.";
+            return;
+        }
+
+        nuevoModelo = new DatosAccesorio();
+        mensajeError = null;
+        await Cargar();
+    }
+
+    private async Task Eliminar(Accesorio accesorio)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // Quita también las asociaciones con ejercicios (fila en ejercicio_accesorios), pero
+        // no borra ningún ejercicio.
+        var entidad = await db.Accesorios.Include(a => a.Ejercicios).FirstOrDefaultAsync(a => a.Id == accesorio.Id);
+        if (entidad is not null)
+        {
+            db.Accesorios.Remove(entidad);
+            await db.SaveChangesAsync();
+        }
+
+        await Cargar();
+    }
+
+    private sealed class DatosAccesorio
+    {
+        [Required(ErrorMessage = "Indica un nombre.")]
+        public string? Nombre { get; set; }
+    }
+}

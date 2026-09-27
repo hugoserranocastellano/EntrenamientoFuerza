@@ -13,7 +13,7 @@
 
 <h1>@(Id is null ? "Nuevo ejercicio" : "Editar ejercicio")</h1>
 
-@if (modelo is null || gruposMusculares is null)
+@if (modelo is null || gruposMusculares is null || accesorios is null)
 {
     <p>Cargando...</p>
 }
@@ -54,6 +54,23 @@ else
             </InputSelect>
         </div>
 
+        <div class="mb-3">
+            <label class="form-label d-block">Accesorios</label>
+            @foreach (var accesorio in accesorios!)
+            {
+                <div class="form-check form-check-inline">
+                    <input type="checkbox" class="form-check-input" id="@($"acc-{accesorio.Id}")"
+                           checked="@modelo.AccesorioIds.Contains(accesorio.Id)"
+                           @onchange="e => AlternarAccesorio(accesorio.Id, (bool)e.Value!)" />
+                    <label class="form-check-label" for="@($"acc-{accesorio.Id}")">@accesorio.Nombre</label>
+                </div>
+            }
+            @if (accesorios.Count == 0)
+            {
+                <p class="text-muted small mb-0">No hay accesorios creados todavía (página "Accesorios" del menú).</p>
+            }
+        </div>
+
         <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary">Guardar</button>
             <a href="ejercicios" class="btn btn-outline-secondary">Cancelar</a>
@@ -71,12 +88,14 @@ else
 
     private DatosEjercicio? modelo;
     private List<GrupoMuscular>? gruposMusculares;
+    private List<Accesorio>? accesorios;
     private string? mensajeError;
 
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         gruposMusculares = await db.GruposMusculares.OrderBy(g => g.Nombre).ToListAsync();
+        accesorios = await db.Accesorios.OrderBy(a => a.Nombre).ToListAsync();
 
         if (Id is null)
         {
@@ -84,7 +103,7 @@ else
             return;
         }
 
-        var ejercicio = await db.Ejercicios.FindAsync(Id.Value);
+        var ejercicio = await db.Ejercicios.Include(e => e.Accesorios).FirstOrDefaultAsync(e => e.Id == Id.Value);
         if (ejercicio is null)
         {
             Navigation.NavigateTo("ejercicios");
@@ -97,27 +116,40 @@ else
             Descripcion = ejercicio.Descripcion,
             VideoUrl = ejercicio.VideoUrl,
             GrupoMuscularId = ejercicio.GrupoMuscularId,
+            AccesorioIds = ejercicio.Accesorios.Select(a => a.Id).ToHashSet(),
         };
+    }
+
+    private void AlternarAccesorio(int accesorioId, bool marcado)
+    {
+        if (marcado)
+            modelo!.AccesorioIds.Add(accesorioId);
+        else
+            modelo!.AccesorioIds.Remove(accesorioId);
     }
 
     private async Task Guardar()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
 
+        var accesoriosElegidos = await db.Accesorios.Where(a => modelo!.AccesorioIds.Contains(a.Id)).ToListAsync();
+
         if (Id is null)
         {
-            db.Ejercicios.Add(new Ejercicio
+            var nuevo = new Ejercicio
             {
                 Nombre = modelo!.Nombre!,
                 Descripcion = modelo.Descripcion,
                 VideoUrl = modelo.VideoUrl,
                 GrupoMuscularId = modelo.GrupoMuscularId,
                 FechaCreacion = DateTime.UtcNow,
-            });
+            };
+            nuevo.Accesorios.AddRange(accesoriosElegidos);
+            db.Ejercicios.Add(nuevo);
         }
         else
         {
-            var ejercicio = await db.Ejercicios.FindAsync(Id.Value);
+            var ejercicio = await db.Ejercicios.Include(e => e.Accesorios).FirstOrDefaultAsync(e => e.Id == Id.Value);
             if (ejercicio is null)
             {
                 mensajeError = "El ejercicio ya no existe.";
@@ -128,6 +160,8 @@ else
             ejercicio.Descripcion = modelo.Descripcion;
             ejercicio.VideoUrl = modelo.VideoUrl;
             ejercicio.GrupoMuscularId = modelo.GrupoMuscularId;
+            ejercicio.Accesorios.Clear();
+            ejercicio.Accesorios.AddRange(accesoriosElegidos);
         }
 
         try
@@ -161,5 +195,6 @@ else
         public string? Descripcion { get; set; }
         public string? VideoUrl { get; set; }
         public int? GrupoMuscularId { get; set; }
+        public HashSet<int> AccesorioIds { get; set; } = [];
     }
 }

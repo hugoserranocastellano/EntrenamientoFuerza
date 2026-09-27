@@ -43,6 +43,15 @@ else
                             }
                         </div>
                         <p class="card-text text-muted">@ejercicio.Descripcion</p>
+                        @if (ejercicio.Accesorios.Count > 0)
+                        {
+                            <p class="card-text small mb-2">
+                                @foreach (var accesorio in ejercicio.Accesorios)
+                                {
+                                    <span class="badge bg-light text-dark border me-1">@accesorio.Nombre</span>
+                                }
+                            </p>
+                        }
                         <a href="@($"ejercicios/{ejercicio.Id}")" class="btn btn-sm btn-outline-secondary">Editar</a>
                     </div>
                 </div>
@@ -60,6 +69,7 @@ else
         ejercicios = await db.Ejercicios
             .Where(e => e.Activo)
             .Include(e => e.GrupoMuscular)
+            .Include(e => e.Accesorios)
             .OrderBy(e => e.Nombre)
             .ToListAsync();
     }

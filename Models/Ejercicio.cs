@@ -11,6 +11,7 @@ public class Ejercicio
     public DateTime FechaCreacion { get; set; }
 
     public GrupoMuscular? GrupoMuscular { get; set; }
+    public List<Accesorio> Accesorios { get; set; } = [];
     public List<RutinaEjercicio> RutinaEjercicios { get; set; } = [];
     public List<SesionEjercicio> SesionEjercicios { get; set; } = [];
 }
