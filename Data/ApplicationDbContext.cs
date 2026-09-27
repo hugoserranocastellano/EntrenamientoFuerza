@@ -90,6 +90,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Nombre).HasColumnName("nombre").HasMaxLength(150).IsRequired();
             e.Property(x => x.Descripcion).HasColumnName("descripcion");
+            e.Property(x => x.SpotifyPlaylistUrl).HasColumnName("spotify_playlist_url").HasMaxLength(500);
             e.Property(x => x.CreadoPorId).HasColumnName("creado_por_id");
             e.Property(x => x.Activa).HasColumnName("activa").HasDefaultValue(true);
             e.Property(x => x.FechaCreacion).HasColumnName("fecha_creacion").HasDefaultValueSql("now()");

@@ -5,10 +5,12 @@
 @using System.Security.Claims
 @using EntrenamientoFuerza.Data
 @using EntrenamientoFuerza.Models
+@using EntrenamientoFuerza.Services
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
 @rendermode InteractiveServer
 
 <PageTitle>@(Id is null ? "Nueva rutina" : "Editar rutina") · Entrenamiento Fuerza</PageTitle>
@@ -49,79 +51,182 @@ else
             <p class="text-muted">Añade al menos un ejercicio.</p>
         }
 
-        <div class="table-responsive">
-            <table class="table align-middle">
-                <thead>
-                    <tr>
-                        <th>Ejercicio</th>
-                        <th style="width:90px">Series</th>
-                        <th style="width:140px">Tipo</th>
-                        <th style="width:110px">Repeticiones</th>
-                        <th style="width:110px">Duración (seg)</th>
-                        <th style="width:110px">Descanso (seg)</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @for (var i = 0; i < filas.Count; i++)
-                    {
-                        var fila = filas[i];
-                        var mismoGrupoQueAnterior = i > 0 && GrupoDe(fila.EjercicioId) is not null
-                            && GrupoDe(fila.EjercicioId) == GrupoDe(filas[i - 1].EjercicioId);
-                        <tr>
-                            <td>
-                                <select class="form-select" @bind="fila.EjercicioId">
-                                    <option value="0">-- selecciona --</option>
-                                    @foreach (var ej in ejerciciosDisponibles)
+        <div class="row g-3">
+            @for (var i = 0; i < filas.Count; i++)
+            {
+                var indice = i;
+                var fila = filas[indice];
+                var ejercicio = ejerciciosDisponibles.First(e => e.Id == fila.EjercicioId);
+                var miniatura = YoutubeHelper.MiniaturaUrl(ejercicio.VideoUrl);
+                var mismoGrupoQueAnterior = indice > 0 && ejercicio.GrupoMuscularId is not null
+                    && ejercicio.GrupoMuscularId == ejerciciosDisponibles.First(e => e.Id == filas[indice - 1].EjercicioId).GrupoMuscularId;
+
+                <div class="col-12 col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h3 class="h6 mb-0">@ejercicio.Nombre</h3>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => filas.RemoveAt(indice)">Quitar</button>
+                            </div>
+                            @if (mismoGrupoQueAnterior)
+                            {
+                                <div class="text-warning small mb-2">Mismo grupo muscular que el anterior</div>
+                            }
+
+                            <div class="d-flex gap-3">
+                                <div class="flex-shrink-0" style="width: 7rem;">
+                                    @if (miniatura is not null)
                                     {
-                                        <option value="@ej.Id">@ej.Nombre@(ej.GrupoMuscular is null ? "" : $" ({ej.GrupoMuscular.Nombre})")</option>
+                                        <img src="@miniatura" class="rounded w-100" alt="" />
                                     }
-                                </select>
-                                @if (mismoGrupoQueAnterior)
-                                {
-                                    <div class="form-text text-warning">Mismo grupo muscular que el anterior</div>
-                                }
-                            </td>
-                            <td><input type="number" min="1" class="form-control" @bind="fila.Series" /></td>
-                            <td>
-                                <select class="form-select" @bind="fila.PorRepeticiones">
-                                    <option value="true">Repeticiones</option>
-                                    <option value="false">Duración</option>
-                                </select>
-                            </td>
-                            <td>
-                                @if (fila.PorRepeticiones)
-                                {
-                                    <input type="number" min="1" class="form-control" @bind="fila.Repeticiones" />
-                                }
-                            </td>
-                            <td>
-                                @if (!fila.PorRepeticiones)
-                                {
-                                    <input type="number" min="1" class="form-control" @bind="fila.DuracionSegundos" />
-                                }
-                            </td>
-                            <td><input type="number" min="0" class="form-control" @bind="fila.DescansoSegundos" /></td>
-                            <td>
-                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => filas.Remove(fila)">Quitar</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+                                    else
+                                    {
+                                        <div class="rounded bg-light border w-100 h-100 d-flex align-items-center justify-content-center text-muted small" style="min-height: 4rem;">
+                                            Sin vídeo
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="flex-grow-1">
+                                    <div class="row g-2">
+                                        <div class="col-4">
+                                            <label class="form-label small mb-0">Series</label>
+                                            <input type="number" min="1" class="form-control form-control-sm" @bind="fila.Series" />
+                                        </div>
+                                        <div class="col-8">
+                                            <label class="form-label small mb-0">
+                                                <select class="form-select form-select-sm d-inline-block w-auto py-0" @bind="fila.PorRepeticiones" style="font-size: inherit;">
+                                                    <option value="true">Repeticiones</option>
+                                                    <option value="false">Duración (seg)</option>
+                                                </select>
+                                            </label>
+                                            @if (fila.PorRepeticiones)
+                                            {
+                                                <input type="number" min="1" class="form-control form-control-sm" @bind="fila.Repeticiones" />
+                                            }
+                                            else
+                                            {
+                                                <input type="number" min="1" class="form-control form-control-sm" @bind="fila.DuracionSegundos" />
+                                            }
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small mb-0">Descanso (seg)</label>
+                                            <input type="number" min="0" class="form-control form-control-sm" @bind="fila.DescansoSegundos" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
         </div>
 
-        <button type="button" class="btn btn-outline-secondary mb-3" @onclick="AnadirFila">Añadir ejercicio</button>
+        <button type="button" class="btn btn-outline-secondary my-3" @onclick="AbrirModalSeleccion">+ Añadir ejercicio</button>
 
-        <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Guardar</button>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi-floppy" aria-hidden="true">💾</i> Guardar
+            </button>
             <a href="rutinas" class="btn btn-outline-secondary">Cancelar</a>
+
+            @if (string.IsNullOrWhiteSpace(modelo.SpotifyPlaylistUrl))
+            {
+                <button type="button" class="btn btn-outline-success" @onclick="EditarPlaylist">
+                    <span aria-hidden="true">🎵</span> Añadir playlist
+                </button>
+            }
+            else
+            {
+                <a href="@modelo.SpotifyPlaylistUrl" target="_blank" rel="noopener" class="btn btn-success">
+                    <span aria-hidden="true">🎵</span> Abrir playlist
+                </a>
+                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="EditarPlaylist">Cambiar</button>
+            }
+
             @if (Id is not null)
             {
                 <button type="button" class="btn btn-outline-danger ms-auto" @onclick="Desactivar">Eliminar</button>
             }
         </div>
     </EditForm>
+}
+
+@if (mostrarModal)
+{
+    <div class="modal d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        @(ejercicioParaAnadirId is null ? "Elige un ejercicio" : "Detalles del ejercicio")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (ejercicioParaAnadirId is null)
+                    {
+                        <div class="row g-2">
+                            @foreach (var ej in ejerciciosDisponibles!)
+                            {
+                                var miniaturaModal = YoutubeHelper.MiniaturaUrl(ej.VideoUrl);
+                                <div class="col-6 col-md-4">
+                                    <button type="button" class="btn btn-outline-secondary w-100 h-100 p-2 text-start" @onclick="() => SeleccionarEjercicio(ej.Id)">
+                                        @if (miniaturaModal is not null)
+                                        {
+                                            <img src="@miniaturaModal" class="rounded w-100 mb-1" alt="" />
+                                        }
+                                        <div class="small">@ej.Nombre</div>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        var ejercicioElegido = ejerciciosDisponibles!.First(e => e.Id == ejercicioParaAnadirId);
+                        <h6>@ejercicioElegido.Nombre</h6>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <label class="form-label small">Series</label>
+                                <input type="number" min="1" class="form-control" @bind="nuevaFilaSeries" />
+                            </div>
+                            <div class="col-8">
+                                <label class="form-label small d-block">Tipo</label>
+                                <select class="form-select" @bind="nuevaFilaPorRepeticiones">
+                                    <option value="true">Repeticiones</option>
+                                    <option value="false">Duración (seg)</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                @if (nuevaFilaPorRepeticiones)
+                                {
+                                    <label class="form-label small">Repeticiones</label>
+                                    <input type="number" min="1" class="form-control" @bind="nuevaFilaRepeticiones" />
+                                }
+                                else
+                                {
+                                    <label class="form-label small">Duración (seg)</label>
+                                    <input type="number" min="1" class="form-control" @bind="nuevaFilaDuracion" />
+                                }
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">Descanso (seg)</label>
+                                <input type="number" min="0" class="form-control" @bind="nuevaFilaDescanso" />
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    @if (ejercicioParaAnadirId is not null)
+                    {
+                        <button type="button" class="btn btn-outline-secondary" @onclick="() => ejercicioParaAnadirId = null">Atrás</button>
+                        <button type="button" class="btn btn-primary" @onclick="ConfirmarAnadirEjercicio">Añadir</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @code {
@@ -132,6 +237,14 @@ else
     private List<Ejercicio>? ejerciciosDisponibles;
     private List<FilaEjercicio> filas = [];
     private string? mensajeError;
+
+    private bool mostrarModal;
+    private int? ejercicioParaAnadirId;
+    private int nuevaFilaSeries = 3;
+    private bool nuevaFilaPorRepeticiones = true;
+    private int? nuevaFilaRepeticiones;
+    private int? nuevaFilaDuracion;
+    private int nuevaFilaDescanso = 60;
 
     protected override async Task OnInitializedAsync()
     {
@@ -151,7 +264,7 @@ else
             return;
         }
 
-        modelo = new DatosRutina { Nombre = rutina.Nombre, Descripcion = rutina.Descripcion };
+        modelo = new DatosRutina { Nombre = rutina.Nombre, Descripcion = rutina.Descripcion, SpotifyPlaylistUrl = rutina.SpotifyPlaylistUrl };
         filas = rutina.RutinaEjercicios
             .OrderBy(re => re.Orden)
             .Select(re => new FilaEjercicio
@@ -166,10 +279,47 @@ else
             .ToList();
     }
 
-    private void AnadirFila() => filas.Add(new FilaEjercicio { Series = 3, PorRepeticiones = true, DescansoSegundos = 60 });
+    private void AbrirModalSeleccion()
+    {
+        ejercicioParaAnadirId = null;
+        mostrarModal = true;
+    }
 
-    private int? GrupoDe(int ejercicioId) =>
-        ejerciciosDisponibles?.FirstOrDefault(e => e.Id == ejercicioId)?.GrupoMuscularId;
+    private void CerrarModal() => mostrarModal = false;
+
+    private void SeleccionarEjercicio(int ejercicioId)
+    {
+        ejercicioParaAnadirId = ejercicioId;
+        nuevaFilaSeries = 3;
+        nuevaFilaPorRepeticiones = true;
+        nuevaFilaRepeticiones = null;
+        nuevaFilaDuracion = null;
+        nuevaFilaDescanso = 60;
+    }
+
+    private void ConfirmarAnadirEjercicio()
+    {
+        filas.Add(new FilaEjercicio
+        {
+            EjercicioId = ejercicioParaAnadirId!.Value,
+            Series = nuevaFilaSeries,
+            PorRepeticiones = nuevaFilaPorRepeticiones,
+            Repeticiones = nuevaFilaRepeticiones,
+            DuracionSegundos = nuevaFilaDuracion,
+            DescansoSegundos = nuevaFilaDescanso,
+        });
+        mostrarModal = false;
+    }
+
+    private async Task EditarPlaylist()
+    {
+        var actual = modelo!.SpotifyPlaylistUrl ?? "";
+        var resultado = await JS.InvokeAsync<string?>("prompt", "Pega el enlace de la playlist de Spotify:", actual);
+        if (resultado is not null)
+        {
+            modelo.SpotifyPlaylistUrl = string.IsNullOrWhiteSpace(resultado) ? null : resultado.Trim();
+        }
+    }
 
     private async Task<int> ObtenerUsuarioIdAsync()
     {
@@ -196,6 +346,7 @@ else
             {
                 Nombre = modelo!.Nombre!,
                 Descripcion = modelo.Descripcion,
+                SpotifyPlaylistUrl = modelo.SpotifyPlaylistUrl,
                 CreadoPorId = await ObtenerUsuarioIdAsync(),
                 FechaCreacion = DateTime.UtcNow,
             };
@@ -212,6 +363,7 @@ else
 
             existente.Nombre = modelo!.Nombre!;
             existente.Descripcion = modelo.Descripcion;
+            existente.SpotifyPlaylistUrl = modelo.SpotifyPlaylistUrl;
             db.RutinaEjercicios.RemoveRange(existente.RutinaEjercicios);
             rutina = existente;
         }
@@ -260,6 +412,7 @@ else
         [Required(ErrorMessage = "Indica un nombre.")]
         public string? Nombre { get; set; }
         public string? Descripcion { get; set; }
+        public string? SpotifyPlaylistUrl { get; set; }
     }
 
     private sealed class FilaEjercicio
