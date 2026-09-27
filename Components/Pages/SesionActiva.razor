@@ -1,0 +1,347 @@
+@page "/rutinas/{RutinaId:int}/activa"
+@attribute [Authorize]
+@using System.Security.Claims
+@using EntrenamientoFuerza.Data
+@using EntrenamientoFuerza.Models
+@using Microsoft.EntityFrameworkCore
+@implements IAsyncDisposable
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Rutina activa · Entrenamiento Fuerza</PageTitle>
+
+@if (rutina is null)
+{
+    <p>Cargando...</p>
+}
+else if (pasos.Count == 0)
+{
+    <div class="alert alert-warning">Esta rutina no tiene ejercicios.</div>
+    <a href="rutinas" class="btn btn-outline-secondary">Volver</a>
+}
+else if (estado == Estado.Finalizada)
+{
+    <div class="text-center py-5">
+        <h1>¡Rutina completada!</h1>
+        <p class="text-muted">Se ha guardado en el diario.</p>
+        <a href="diario" class="btn btn-primary">Ver diario</a>
+    </div>
+}
+else
+{
+    var paso = pasos[indice];
+
+    <div class="text-center py-4">
+        <p class="text-uppercase small text-muted mb-1">
+            @rutina.Nombre — paso @(indice + 1) de @pasos.Count
+        </p>
+
+        @if (paso.EsDescanso)
+        {
+            <h1 class="display-6">Descanso</h1>
+        }
+        else
+        {
+            <h1 class="display-6">@paso.EjercicioNombre</h1>
+            <p class="text-muted mb-0">Serie @paso.NumeroSerie de @paso.SeriesTotales</p>
+        }
+
+        @if (paso.Tipo == TipoPaso.Cronometro)
+        {
+            <div class="display-1 fw-bold my-4">@FormatoTiempo(segundosRestantes)</div>
+        }
+        else
+        {
+            <div class="display-3 fw-bold my-4">@paso.Repeticiones reps</div>
+        }
+
+        @if (estado == Estado.NoIniciada)
+        {
+            <button type="button" class="btn btn-primary btn-lg" @onclick="Empezar">Empezar</button>
+        }
+        else
+        {
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                @if (paso.Tipo == TipoPaso.Repeticiones)
+                {
+                    <button type="button" class="btn btn-primary btn-lg" @onclick="() => CompletarPasoActual(true)">Hecho</button>
+                }
+                <button type="button" class="btn btn-outline-primary btn-lg" @onclick="TogglePausa">
+                    @(estado == Estado.Pausada ? "Reanudar" : "Pausar")
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-lg" @onclick="() => CompletarPasoActual(false)">Saltar</button>
+            </div>
+            <button type="button" class="btn btn-link text-white mt-3" @onclick="DetenerYGuardar">Detener y guardar</button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int RutinaId { get; set; }
+
+    private Rutina? rutina;
+    private List<Paso> pasos = [];
+    private int indice;
+    private int segundosRestantes;
+    private Estado estado = Estado.NoIniciada;
+    private List<ResultadoSerie> resultados = [];
+    private int usuarioId;
+
+    private PeriodicTimer? temporizador;
+    private CancellationTokenSource? cts;
+    private IJSObjectReference? wakeLockModule;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var estadoAuth = await AuthState.GetAuthenticationStateAsync();
+        usuarioId = int.Parse(estadoAuth.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rutina = await db.Rutinas
+            .Include(r => r.RutinaEjercicios).ThenInclude(re => re.Ejercicio)
+            .FirstOrDefaultAsync(r => r.Id == RutinaId);
+
+        if (rutina is null)
+        {
+            Navigation.NavigateTo("rutinas");
+            return;
+        }
+
+        ConstruirPasos();
+    }
+
+    private void ConstruirPasos()
+    {
+        var ordenados = rutina!.RutinaEjercicios.OrderBy(re => re.Orden).ToList();
+
+        for (var i = 0; i < ordenados.Count; i++)
+        {
+            var re = ordenados[i];
+            for (var serie = 1; serie <= re.Series; serie++)
+            {
+                var porRepeticiones = re.Repeticiones is not null;
+                pasos.Add(new Paso
+                {
+                    EsDescanso = false,
+                    Tipo = porRepeticiones ? TipoPaso.Repeticiones : TipoPaso.Cronometro,
+                    EjercicioId = re.EjercicioId,
+                    EjercicioNombre = re.Ejercicio!.Nombre,
+                    NumeroSerie = serie,
+                    SeriesTotales = re.Series,
+                    Repeticiones = re.Repeticiones,
+                    DuracionSegundos = re.DuracionSegundos,
+                });
+
+                var esUltimoPaso = i == ordenados.Count - 1 && serie == re.Series;
+                if (!esUltimoPaso && re.DescansoSegundos > 0)
+                {
+                    pasos.Add(new Paso
+                    {
+                        EsDescanso = true,
+                        Tipo = TipoPaso.Cronometro,
+                        EjercicioId = re.EjercicioId,
+                        EjercicioNombre = re.Ejercicio!.Nombre,
+                        NumeroSerie = serie,
+                        SeriesTotales = re.Series,
+                        DuracionSegundos = re.DescansoSegundos,
+                    });
+                }
+            }
+        }
+    }
+
+    private async Task Empezar()
+    {
+        estado = Estado.Corriendo;
+        ReiniciarCronometroDelPaso();
+
+        wakeLockModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/wakelock.js");
+        await wakeLockModule.InvokeVoidAsync("activar");
+
+        cts = new CancellationTokenSource();
+        temporizador = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        _ = BucleAsync(cts.Token);
+    }
+
+    private void ReiniciarCronometroDelPaso()
+    {
+        var paso = pasos[indice];
+        segundosRestantes = paso.Tipo == TipoPaso.Cronometro ? (paso.DuracionSegundos ?? 0) : 0;
+    }
+
+    private async Task BucleAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await temporizador!.WaitForNextTickAsync(token))
+            {
+                if (estado != Estado.Corriendo) continue;
+
+                var paso = pasos[indice];
+                if (paso.Tipo == TipoPaso.Cronometro)
+                {
+                    segundosRestantes--;
+                    if (segundosRestantes <= 0)
+                    {
+                        await InvokeAsync(() => CompletarPasoActual(true));
+                        continue;
+                    }
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Bucle detenido al salir de la sesión.
+        }
+    }
+
+    private void TogglePausa()
+    {
+        estado = estado == Estado.Pausada ? Estado.Corriendo : Estado.Pausada;
+    }
+
+    private void CompletarPasoActual(bool completado)
+    {
+        var paso = pasos[indice];
+        if (!paso.EsDescanso && completado)
+        {
+            resultados.Add(new ResultadoSerie
+            {
+                EjercicioId = paso.EjercicioId,
+                NumeroSerie = paso.NumeroSerie,
+                RepeticionesRealizadas = paso.Tipo == TipoPaso.Repeticiones ? paso.Repeticiones : null,
+                DuracionSegundosReal = paso.Tipo == TipoPaso.Cronometro ? paso.DuracionSegundos : null,
+            });
+        }
+
+        Avanzar();
+    }
+
+    private void Avanzar()
+    {
+        indice++;
+        if (indice >= pasos.Count)
+        {
+            _ = FinalizarAsync();
+            return;
+        }
+
+        ReiniciarCronometroDelPaso();
+        StateHasChanged();
+    }
+
+    private async Task DetenerYGuardar() => await FinalizarAsync();
+
+    private async Task FinalizarAsync()
+    {
+        estado = Estado.Finalizada;
+
+        if (cts is not null) await cts.CancelAsync();
+        if (wakeLockModule is not null)
+        {
+            await wakeLockModule.InvokeVoidAsync("desactivar");
+        }
+
+        await GuardarSesionAsync();
+        StateHasChanged();
+    }
+
+    private async Task GuardarSesionAsync()
+    {
+        if (resultados.Count == 0) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var sesion = new SesionDiario
+        {
+            UsuarioId = usuarioId,
+            RutinaId = RutinaId,
+            Fecha = DateOnly.FromDateTime(DateTime.Today),
+            FechaCreacion = DateTime.UtcNow,
+        };
+        db.SesionesDiario.Add(sesion);
+
+        foreach (var grupo in resultados.GroupBy(r => r.EjercicioId))
+        {
+            var sesionEjercicio = new SesionEjercicio
+            {
+                SesionDiario = sesion,
+                EjercicioId = grupo.Key,
+                Orden = pasos.First(p => !p.EsDescanso && p.EjercicioId == grupo.Key).NumeroSerie,
+            };
+            db.SesionEjercicios.Add(sesionEjercicio);
+
+            foreach (var r in grupo)
+            {
+                db.SesionSeries.Add(new SesionSerie
+                {
+                    SesionEjercicio = sesionEjercicio,
+                    NumeroSerie = r.NumeroSerie,
+                    RepeticionesRealizadas = r.RepeticionesRealizadas,
+                    DuracionSegundosReal = r.DuracionSegundosReal,
+                    Completada = true,
+                });
+            }
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private static string FormatoTiempo(int segundos)
+    {
+        var s = Math.Max(segundos, 0);
+        return $"{s / 60:00}:{s % 60:00}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (cts is not null)
+        {
+            await cts.CancelAsync();
+            cts.Dispose();
+        }
+        temporizador?.Dispose();
+
+        if (wakeLockModule is not null)
+        {
+            try
+            {
+                await wakeLockModule.InvokeVoidAsync("desactivar");
+                await wakeLockModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // El circuito ya se cerró (navegación/cierre de pestaña); nada que liberar.
+            }
+        }
+    }
+
+    private enum Estado { NoIniciada, Corriendo, Pausada, Finalizada }
+    private enum TipoPaso { Repeticiones, Cronometro }
+
+    private sealed class Paso
+    {
+        public required bool EsDescanso { get; init; }
+        public required TipoPaso Tipo { get; init; }
+        public required int EjercicioId { get; init; }
+        public required string EjercicioNombre { get; init; }
+        public required int NumeroSerie { get; init; }
+        public required int SeriesTotales { get; init; }
+        public int? Repeticiones { get; init; }
+        public int? DuracionSegundos { get; init; }
+    }
+
+    private sealed class ResultadoSerie
+    {
+        public required int EjercicioId { get; init; }
+        public required int NumeroSerie { get; init; }
+        public int? RepeticionesRealizadas { get; init; }
+        public int? DuracionSegundosReal { get; init; }
+    }
+}

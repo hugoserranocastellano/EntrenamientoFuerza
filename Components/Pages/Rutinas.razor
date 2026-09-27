@@ -26,16 +26,24 @@ else
     <div class="list-group">
         @foreach (var rutina in rutinas)
         {
-            <a href="@($"rutinas/{rutina.Id}")" class="list-group-item list-group-item-action">
-                <div class="d-flex justify-content-between">
-                    <span class="fw-semibold">@rutina.Nombre</span>
-                    <span class="text-muted small">@rutina.RutinaEjercicios.Count ejercicio(s)</span>
+            <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                    <a href="@($"rutinas/{rutina.Id}")" class="text-decoration-none flex-grow-1">
+                        <div class="d-flex justify-content-between">
+                            <span class="fw-semibold">@rutina.Nombre</span>
+                            <span class="text-muted small">@rutina.RutinaEjercicios.Count ejercicio(s)</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(rutina.Descripcion))
+                        {
+                            <div class="text-muted small">@rutina.Descripcion</div>
+                        }
+                    </a>
+                    @if (rutina.RutinaEjercicios.Count > 0)
+                    {
+                        <a href="@($"rutinas/{rutina.Id}/activa")" class="btn btn-sm btn-primary text-nowrap">Iniciar</a>
+                    }
                 </div>
-                @if (!string.IsNullOrWhiteSpace(rutina.Descripcion))
-                {
-                    <div class="text-muted small">@rutina.Descripcion</div>
-                }
-            </a>
+            </div>
         }
     </div>
 }
