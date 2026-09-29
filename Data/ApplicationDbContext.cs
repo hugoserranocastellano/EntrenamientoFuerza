@@ -56,6 +56,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Nombre).HasColumnName("nombre").HasMaxLength(50).IsRequired();
+            e.Property(x => x.ImagenUrl).HasColumnName("imagen_url").HasMaxLength(500);
             e.HasIndex(x => x.Nombre).IsUnique();
         });
 
@@ -65,6 +66,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Nombre).HasColumnName("nombre").HasMaxLength(50).IsRequired();
+            e.Property(x => x.ImagenUrl).HasColumnName("imagen_url").HasMaxLength(500);
             e.HasIndex(x => x.Nombre).IsUnique();
         });
 

@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using EntrenamientoFuerza.Components;
 using EntrenamientoFuerza.Data;
 using EntrenamientoFuerza.Services;
@@ -49,6 +50,8 @@ var connectionString = PostgresConnectionString.Normalize(rawConnectionString);
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
+builder.Services.AddHttpClient<SupabaseStorageService>();
+
 var app = builder.Build();
 
 // No hay pantalla de registro a propósito (los usuarios los da de alta el admin).
@@ -57,6 +60,14 @@ var app = builder.Build();
 if (args.Length > 0 && args[0] == "crear-usuario")
 {
     await CrearUsuarioAsync(app, args);
+    return;
+}
+
+// `dotnet EntrenamientoFuerza.dll crear-bucket <nombre>` crea un bucket público en
+// Supabase Storage (idempotente: si ya existe, no falla) y termina sin levantar el servidor.
+if (args.Length > 0 && args[0] == "crear-bucket")
+{
+    await CrearBucketAsync(app, args);
     return;
 }
 
@@ -147,4 +158,43 @@ static async Task CrearUsuarioAsync(WebApplication app, string[] args)
 
     await db.SaveChangesAsync();
     Console.WriteLine("Hecho.");
+}
+
+static async Task CrearBucketAsync(WebApplication app, string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.WriteLine("Uso: crear-bucket <nombre>");
+        return;
+    }
+
+    var nombre = args[1];
+    var url = app.Configuration["Supabase:Url"]?.TrimEnd('/');
+    var serviceRoleKey = app.Configuration["Supabase:ServiceRoleKey"];
+
+    if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(serviceRoleKey))
+    {
+        Console.WriteLine("Faltan 'Supabase:Url' o 'Supabase:ServiceRoleKey' en la configuración.");
+        return;
+    }
+
+    using var http = new HttpClient();
+    http.DefaultRequestHeaders.Authorization = new("Bearer", serviceRoleKey);
+    http.DefaultRequestHeaders.Add("apikey", serviceRoleKey);
+
+    using var response = await http.PostAsJsonAsync($"{url}/storage/v1/bucket", new { id = nombre, name = nombre, @public = true });
+
+    if (response.IsSuccessStatusCode)
+    {
+        Console.WriteLine($"Bucket '{nombre}' creado.");
+    }
+    else if (response.StatusCode == System.Net.HttpStatusCode.Conflict
+        || (await response.Content.ReadAsStringAsync()).Contains("already exists", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.WriteLine($"El bucket '{nombre}' ya existía.");
+    }
+    else
+    {
+        Console.WriteLine($"Error ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+    }
 }

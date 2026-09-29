@@ -43,6 +43,14 @@ Debe ser la cadena del **pooler** de Supabase (`*.pooler.supabase.com:5432`, ses
 mode), no la conexión directa (solo IPv6). Usuario con sufijo `postgres.<project-ref>`.
 `Data/PostgresConnectionString.cs` valida esto al arrancar.
 
+`Supabase:Url` y `Supabase:ServiceRoleKey` (Project Settings → API en Supabase), para
+`Services/SupabaseStorageService.cs` (subida de imágenes a Storage):
+- Local: `dotnet user-secrets set "Supabase:Url" "..."` / `"Supabase:ServiceRoleKey" "..."`.
+- Render: variables `Supabase__Url` / `Supabase__ServiceRoleKey`.
+
+Los buckets (públicos) se crean con `dotnet bin/Debug/net10.0/EntrenamientoFuerza.dll
+crear-bucket <nombre>` — idempotente. Buckets en uso: `GruposMusculares`, `Accesorios`.
+
 ## Arquitectura
 
 - **Blazor Server**, páginas en `Components/Pages/*.razor`, render mode interactivo
@@ -59,6 +67,10 @@ mode), no la conexión directa (solo IPv6). Usuario con sufijo `postgres.<projec
   del plan). Repeticiones y duración son mutuamente excluyentes en cada fila.
 - **Vídeos**: solo enlace embebido de YouTube (`Ejercicio.VideoUrl`), sin subida ni
   descarga de archivos.
+- **Imágenes**: en `Ejercicio` (`ImagenUrl`) es un enlace pegado a mano (flujo
+  "buscar + pegar", como el vídeo). En `GrupoMuscular` y `Accesorio` es subida real a
+  Supabase Storage vía `SupabaseStorageService` (mismo servicio que
+  `CiudadDeportivaTudela`, copiado tal cual).
 - **Despliegue en Render**: mismo patrón que `CiudadDeportivaTudela` (ver ese
   `CLAUDE.md` para el porqué de cada detalle — `ForwardedHeaders`, `/healthz`,
   `numInstances: 1`, no `UseHttpsRedirection()` en producción).

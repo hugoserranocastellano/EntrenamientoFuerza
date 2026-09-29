@@ -3,8 +3,10 @@
 @using System.ComponentModel.DataAnnotations
 @using EntrenamientoFuerza.Data
 @using EntrenamientoFuerza.Models
+@using EntrenamientoFuerza.Services
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject SupabaseStorageService Storage
 @rendermode InteractiveServer
 
 <PageTitle>Grupos musculares · Entrenamiento Fuerza</PageTitle>
@@ -22,20 +24,55 @@
 }
 else
 {
-    <ul class="list-group mb-3 col-md-4">
+    <div class="row g-3 mb-4">
         @foreach (var grupo in grupos)
         {
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                @grupo.Nombre
-                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(grupo)">Eliminar</button>
-            </li>
+            <div class="col-6 col-md-3">
+                <div class="card h-100">
+                    @if (!string.IsNullOrWhiteSpace(grupo.ImagenUrl))
+                    {
+                        <img src="@grupo.ImagenUrl" class="card-img-top" style="aspect-ratio:1; object-fit:cover;" alt="" />
+                    }
+                    else
+                    {
+                        <div class="bg-light border-bottom d-flex align-items-center justify-content-center text-muted small" style="aspect-ratio:1;">
+                            Sin imagen
+                        </div>
+                    }
+                    <div class="card-body p-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold">@grupo.Nombre</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(grupo)">✕</button>
+                        </div>
+                        <InputFile class="form-control form-control-sm" OnChange="e => CambiarImagen(grupo, e)" disabled="@(subiendoId == grupo.Id)" />
+                        @if (subiendoId == grupo.Id)
+                        {
+                            <span class="small text-muted">Subiendo...</span>
+                        }
+                    </div>
+                </div>
+            </div>
         }
-    </ul>
+    </div>
 
-    <EditForm Model="nuevoModelo" OnValidSubmit="Anadir" class="col-md-4 d-flex gap-2">
+    <h2 class="h5">Nuevo grupo</h2>
+    <EditForm Model="nuevoModelo" OnValidSubmit="Anadir" class="col-md-4">
         <DataAnnotationsValidator />
-        <InputText class="form-control" @bind-Value="nuevoModelo.Nombre" placeholder="Nombre del grupo (ej. Piernas)" />
-        <button type="submit" class="btn btn-primary text-nowrap">Añadir</button>
+        <div class="mb-2">
+            <InputText class="form-control" @bind-Value="nuevoModelo.Nombre" placeholder="Nombre del grupo (ej. Piernas)" />
+        </div>
+        <div class="mb-2">
+            <InputFile class="form-control" OnChange="ElegirImagenNueva" disabled="@subiendoNuevo" />
+            @if (subiendoNuevo)
+            {
+                <span class="small text-muted">Subiendo...</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(nuevoModelo.ImagenUrl))
+            {
+                <img src="@nuevoModelo.ImagenUrl" class="mt-2 rounded" style="width:5rem;height:5rem;object-fit:cover;" alt="" />
+            }
+        </div>
+        <button type="submit" class="btn btn-primary">Añadir</button>
     </EditForm>
 }
 
@@ -43,6 +80,10 @@ else
     private List<GrupoMuscular>? grupos;
     private DatosGrupo nuevoModelo = new();
     private string? mensajeError;
+    private bool subiendoNuevo;
+    private int? subiendoId;
+
+    private const string Bucket = "GruposMusculares";
 
     protected override async Task OnInitializedAsync() => await Cargar();
 
@@ -52,10 +93,60 @@ else
         grupos = await db.GruposMusculares.OrderBy(g => g.Nombre).ToListAsync();
     }
 
+    private async Task ElegirImagenNueva(InputFileChangeEventArgs e)
+    {
+        subiendoNuevo = true;
+        try
+        {
+            nuevoModelo.ImagenUrl = await SubirAsync(e.File);
+        }
+        catch (Exception ex)
+        {
+            mensajeError = ex.Message;
+        }
+        finally
+        {
+            subiendoNuevo = false;
+        }
+    }
+
+    private async Task CambiarImagen(GrupoMuscular grupo, InputFileChangeEventArgs e)
+    {
+        subiendoId = grupo.Id;
+        try
+        {
+            var url = await SubirAsync(e.File);
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            await db.GruposMusculares.Where(g => g.Id == grupo.Id)
+                .ExecuteUpdateAsync(g => g.SetProperty(x => x.ImagenUrl, url));
+
+            grupo.ImagenUrl = url;
+        }
+        catch (Exception ex)
+        {
+            mensajeError = ex.Message;
+        }
+        finally
+        {
+            subiendoId = null;
+        }
+    }
+
+    private async Task<string> SubirAsync(IBrowserFile fichero)
+    {
+        var extension = Path.GetExtension(fichero.Name);
+        var ruta = $"{Guid.NewGuid():N}{extension}";
+
+        await using var stream = fichero.OpenReadStream(10 * 1024 * 1024);
+        return await Storage.SubirAsync(Bucket, ruta, stream,
+            string.IsNullOrWhiteSpace(fichero.ContentType) ? "application/octet-stream" : fichero.ContentType);
+    }
+
     private async Task Anadir()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        db.GruposMusculares.Add(new GrupoMuscular { Nombre = nuevoModelo.Nombre!.Trim() });
+        db.GruposMusculares.Add(new GrupoMuscular { Nombre = nuevoModelo.Nombre!.Trim(), ImagenUrl = nuevoModelo.ImagenUrl });
 
         try
         {
@@ -84,5 +175,6 @@ else
     {
         [Required(ErrorMessage = "Indica un nombre.")]
         public string? Nombre { get; set; }
+        public string? ImagenUrl { get; set; }
     }
 }
